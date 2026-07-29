@@ -518,5 +518,5 @@ This page is served by a custom NGINX Docker image.
 
 ## 증거
 -[컨테이너 실행 및 포트 매핑 증거](./evidence/docker-ps-result.png)
--[브라우저 접속 결과] (./evidence/port-mapping.png)
+-[브라우저 접속 결과](./evidence/port-mapping.png)
 
