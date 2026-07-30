@@ -734,11 +734,6 @@ CONTAINER ID   NAME           CPU %     MEM USAGE / LIMIT     MEM %     NET I/O 
 - favicon.ico 누락으로 인한 404 확인
 - `docker stats --no-stream`으로 컨테이너별 리소스 사용량 기록
 
-### 증거
-
-- [Docker 운영 로그](./evidence/docker-logs.png)
-- [Docker stats 결과](./evidence/docker-stats.png)
-
 ---
 
 ## 9. 트러블슈팅 2건 작성
