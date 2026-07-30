@@ -1,17 +1,20 @@
 services:
   web:
-     build:
-      context: ./codyssey
+    build:
+      context: .
       dockerfile: Dockerfile
-      image: codyssey-nginx:compose
-      container_name: compose-web
-      ports:
-        - "${HOST_PORT:-8090}:80"
-      environment:
-        - APP_MODE=${APP_MODE:-dev}
-      volumes:
-        - ./codyssey/app:/usr/share/nginx/html:ro
 
+    image: codyssey-nginx:compose
+    container_name: compose-web
+
+    ports:
+      - "${HOST_PORT:-8090}:80"
+
+    environment:
+      - APP_MODE=${APP_MODE:-dev}
+
+    volumes:
+      - ./app:/usr/share/nginx/html:ro
   checker:
     image: alpine:3.20
     container_name: compose-checker
