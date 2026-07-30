@@ -888,3 +888,248 @@ VSCode에서 GitHub 로그인 후 저장소 연동을 완료하였다.
 - 기본 브랜치 설정 완료
 - GitHub 원격 저장소 연결 확인
 - VSCode GitHub 로그인 및 연동 완료
+
+---
+
+# 보너스 과제: Docker Compose & GitHub SSH
+
+## 11. Docker Compose 기초 (단일 서비스)
+
+컨테이너 실행 명령을 문서화된 설정 파일(docker-compose.yml)로 관리하는 방법을 학습하였다.
+
+### 11-1. Docker Compose 버전 확인
+
+#### 실행 명령어
+
+```bash
+docker compose version
+```
+
+#### 실행 결과
+
+```text
+Docker Compose version v2.40.3
+```
+
+### 11-2. docker-compose.yml 작성
+
+#### 파일 내용
+
+```yaml
+services:
+  web:
+    build: .
+    image: codyssey-nginx:compose
+    container_name: compose-web
+    ports:
+      - "${HOST_PORT:-8090}:80"
+    volumes:
+      - ./app:/usr/share/nginx/html
+
+  checker:
+    image: alpine:3.20
+    container_name: compose-checker
+    command: sh -c "while true; do wget -qO- http://web; sleep 5; done"
+    depends_on:
+      - web
+```
+
+#### 구조 설명
+
+- `services`: 실행할 컨테이너 서비스들을 정의한다.
+- `web`: NGINX 웹 서버 컨테이너 서비스 이름이다.
+- `build: .`: 현재 디렉토리의 Dockerfile을 사용해 이미지를 빌드한다.
+- `ports`: 호스트 포트와 컨테이너 포트를 연결한다. 환경 변수 `HOST_PORT`가 없으면 기본값 8090을 사용한다.
+- `volumes`: 호스트의 app 폴더를 컨테이너의 NGINX 웹 루트에 연결한다.
+- `checker`: 같은 Compose 네트워크 안에서 web 서비스에 접속을 테스트하는 보조 컨테이너이다.
+
+### 11-3. 단일 서비스 실행
+
+#### 실행 명령어
+
+```bash
+docker compose up -d web
+docker compose logs web
+curl http://localhost:8090
+```
+
+기존에는 컨테이너 실행 시 다음처럼 긴 명령어를 직접 입력해야 했다.
+
+```bash
+docker run -d -p 8090:80 --name compose-web codyssey-nginx:compose
+```
+
+Compose를 사용하면 실행 옵션(포트, 볼륨, 이름 등)이 yml 파일에 문서화되므로,
+누구나 `docker compose up` 한 줄로 동일한 환경을 재현할 수 있다.
+이것이 실행 명령이 "문서화된 실행 설정"으로 바뀌는 핵심 이유이다.
+
+### 증거
+
+- [Compose 단일 서비스 접속 성공](./evidence/compose-single-web.png)
+
+---
+
+## 12. Compose 멀티 컨테이너 및 네트워크 통신
+
+웹 서버(web)와 보조 컨테이너(checker) 2개를 함께 실행하고,
+컨테이너 간 네트워크 통신이 가능한지 확인하였다.
+
+### 12-1. 멀티 컨테이너 실행 및 통신 확인
+
+#### 실행 명령어
+
+```bash
+docker compose up -d
+docker compose logs checker
+```
+
+#### 실행 결과
+
+```text
+compose-checker  | <!DOCTYPE html>
+compose-checker  | <html>
+compose-checker  | <head>
+compose-checker  |   <meta charset="UTF-8">
+compose-checker  |   <title>Bind Mount Test</title>
+compose-checker  | </head>
+compose-checker  | <body>
+compose-checker  |   <h1>Bind Mount Updated!</h1>
+compose-checker  |   <p>This content was changed on the host machine.</p>
+compose-checker  | </body>
+compose-checker  | </html>
+```
+
+### 12-2. 네트워크/서비스 디스커버리 확인
+
+checker 컨테이너는 IP 주소가 아닌 **서비스 이름(`http://web`)**으로 web 컨테이너에 접속하였다.
+Compose가 서비스들을 같은 네트워크에 배치하고, 서비스 이름을 DNS처럼 사용할 수 있게 해주기 때문이다.
+이를 통해 서비스 디스커버리의 기본 개념을 확인하였다.
+
+---
+
+## 13. Compose 운영 명령어 습득
+
+`up`, `down`, `ps`, `logs`를 사용해 실행/종료/상태/로그를 관리하였다.
+
+### 13-1. 운영 명령어 실행 로그
+
+#### 실행 명령어 및 결과
+
+```bash
+$ docker compose up -d
+[+] Running 2/2
+ ✔ Container compose-web      Started
+ ✔ Container compose-checker  Started
+
+$ docker compose ps
+NAME              IMAGE                    STATUS
+compose-web       codyssey-nginx:compose   Up
+compose-checker   alpine:3.20              Up
+
+$ docker compose logs checker
+compose-checker  | <!DOCTYPE html>
+compose-checker  | <html>
+...
+
+$ docker compose down
+[+] Running 3/3
+ ✔ Container compose-checker  Removed
+ ✔ Container compose-web      Removed
+ ✔ Network compose_default    Removed
+```
+
+### 13-2. 정리
+
+운영 관점의 상태 확인 루틴을 다음과 같이 정리하였다.
+
+- `docker compose up -d`: 서비스 전체 실행
+- `docker compose ps`: 실행 상태 확인
+- `docker compose logs <서비스>`: 서비스별 로그 확인
+- `docker compose down`: 컨테이너와 네트워크까지 일괄 정리
+
+---
+
+## 14. 환경 변수 활용
+
+docker-compose.yml에서 포트 번호를 고정하지 않고 환경 변수로 분리하였다.
+
+### 14-1. 환경 변수 주입 설정
+
+```yaml
+ports:
+  - "${HOST_PORT:-8090}:80"
+```
+
+`HOST_PORT` 환경 변수가 지정되면 해당 포트를 사용하고, 없으면 기본값 8090을 사용한다.
+
+### 14-2. 실행 및 확인
+
+#### 실행 명령어
+
+```bash
+HOST_PORT=8091 APP_MODE=bonus docker compose up -d web
+curl http://localhost:8091
+```
+
+#### 정리
+
+이 방식은 코드나 Compose 파일을 직접 수정하지 않고
+실행 환경에 따라 포트나 모드를 바꿀 수 있다는 장점이 있다.
+"설정과 코드의 분리"를 통해 개발/운영 환경 전환이 쉬워진다.
+
+---
+
+## 15. GitHub SSH 키 설정
+
+HTTPS 대신 SSH 방식으로 GitHub 저장소에 push할 수 있도록 SSH 키를 등록하였다.
+개인 키(private key)는 절대 노출하지 않으며, 아래는 공개 키(public key)만 기록한 것이다.
+
+### 15-1. SSH 키 생성 및 등록
+
+#### 생성된 공개 키
+
+```text
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMEJpbg+P/25H48IQ81eiA/t5Ql+SkcwXBRPa96sXp/f *** (이메일 마스킹)
+```
+
+GitHub → Settings → SSH and GPG keys에 공개 키를 등록하였다.
+
+### 15-2. SSH 연결 확인
+
+#### 실행 명령어
+
+```bash
+ssh -T git@github.com
+```
+
+#### 실행 결과
+
+```text
+Hi mina1016! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+### 15-3. 원격 저장소 URL을 SSH 방식으로 변경
+
+#### 실행 명령어
+
+```bash
+git remote set-url origin git@github.com:mina1016/codyssey.git
+git remote -v
+```
+
+#### 실행 결과
+
+```text
+origin  git@github.com:mina1016/codyssey.git (fetch)
+origin  git@github.com:mina1016/codyssey.git (push)
+```
+
+### 15-4. 정리
+
+- HTTPS 방식: 토큰(PAT) 기반 인증, 매번 자격 증명 필요할 수 있음
+- SSH 방식: 키 쌍 기반 인증, 최초 등록 후 반복 인증 불필요
+- 개인 키는 로컬에만 보관하고, 공개 키만 GitHub에 등록하는 것이 
+
+### 증거
+
+- [github 변경 확인](./evidence/github-ssh-key-added.png)
