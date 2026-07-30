@@ -818,6 +818,108 @@ docker run -d -p 8081:80 --name bind-web -v "$(pwd)/app:/usr/share/nginx/html" n
 
 ---
 
+### 트러블슈팅 3: GitHub SSH 최초 접속 시 호스트 인증 경고
+
+### 문제 상황
+
+SSH 키 등록 후 `ssh -T git@github.com`으로 연결을 테스트하는 과정에서
+예상한 인증 성공 메시지 대신 낯선 경고 메시지가 출력되며 진행이 멈췄다.
+
+### 오류 메시지
+
+```text
+The authenticity of host 'github.com (20.200.245.248)' can't be established.
+ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])?
+```
+
+### 원인 분석
+
+- 이것은 오류가 아니라 **SSH의 정상적인 보안 확인 절차**였다.
+- SSH는 처음 접속하는 서버의 신원을 보장할 수 없으므로,
+  서버의 공개 키 지문(fingerprint)을 사용자에게 보여주고 신뢰 여부를 직접 확인받는다.
+- 중간자 공격(MITM)으로 가짜 서버에 접속하는 것을 방지하기 위한 장치이다.
+
+### 해결 방법
+
+1. 출력된 지문이 GitHub 공식 문서에 공개된 지문과 일치하는지 대조하였다.
+
+   - GitHub 공식 ED25519 지문: `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`
+   - 출처: GitHub Docs "GitHub's SSH key fingerprints"
+
+2. 일치함을 확인한 후 `yes`를 입력하여 접속을 진행하였다.
+
+```text
+Warning: Permanently added 'github.com' (ED25519) to the list of known hosts.
+Hi mina1016! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+3. 이후 GitHub의 공개 키가 `~/.ssh/known_hosts`에 저장되어 재접속 시에는 경고가 나타나지 않았다.
+
+### 배운 점
+
+- 낯선 메시지가 나왔을 때 무조건 `yes`를 입력하지 않고,
+  **지문을 공식 출처와 대조하는 습관**이 보안의 기본이라는 것을 배웠다.
+- SSH는 "사용자 인증(내 키)"뿐 아니라 "서버 인증(호스트 키)"도 수행한다는 점을 이해하였다.
+
+---
+
+### 트러블슈팅 4: Compose 실행 후 checker 컨테이너가 즉시 종료되는 문제
+
+### 문제 상황
+
+`docker compose up -d`로 멀티 컨테이너를 실행했으나,
+`docker compose ps`로 확인하면 web 컨테이너만 실행 중이고
+checker 컨테이너는 목록에 보이지 않거나 종료 상태로 표시되었다.
+
+### 오류 메시지
+
+```text
+$ docker compose ps -a
+NAME              IMAGE                    STATUS
+compose-web       codyssey-nginx:compose   Up
+compose-checker   alpine:3.20              Exited (0)
+```
+
+### 원인 분석
+
+- 컨테이너는 **포그라운드에서 실행 중인 프로세스가 있어야 살아있는 상태를 유지**한다.
+- web 컨테이너는 NGINX가 계속 실행되므로 살아있지만,
+  checker의 alpine 이미지는 기본 명령(`/bin/sh`)이 실행 후 즉시 종료된다.
+- 종료 코드가 0(정상 종료)이므로 오류 로그도 없어서 원인을 파악하기 어려웠다.
+
+### 해결 방법
+
+docker-compose.yml의 checker 서비스에 종료되지 않고 계속 실행되는 명령을 추가하였다.
+
+```yaml
+checker:
+  image: alpine:3.20
+  container_name: compose-checker
+  command: sh -c "while true; do wget -qO- http://web; sleep 5; done"
+  depends_on:
+    - web
+```
+
+수정 후 재실행하니 checker가 계속 실행되며 5초마다 web 서비스에 접속하는 것을 확인하였다.
+
+```text
+$ docker compose up -d
+$ docker compose ps
+NAME              IMAGE                    STATUS
+compose-web       codyssey-nginx:compose   Up
+compose-checker   alpine:3.20              Up
+```
+
+### 배운 점
+
+- 컨테이너의 생명주기는 **메인 프로세스(PID 1)의 생명주기와 같다**는 핵심 개념을 이해하였다.
+- `Exited (0)`처럼 오류가 아닌 종료도 있으므로,
+  컨테이너가 안 보일 때는 `docker compose ps -a`로 종료된 컨테이너까지 확인해야 한다는 것을 배웠다.
+
+---
+
 ## 10. Git 설정 및 GitHub/VSCode 연동
 
 Git 사용자 정보와 기본 브랜치 설정을 완료한 뒤, GitHub 저장소 및 VSCode 연동을 확인하였다.
